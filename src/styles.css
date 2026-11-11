@@ -1,0 +1,68 @@
+/* CHRIST Smart Campus dashboard styles. Location: client/src/styles.css (imported by main.jsx).
+   After editing, run "npm run build" and refresh the browser with Ctrl+F5. */
+:root {
+  --blue: #0b5394; --blue-dark: #083a69; --bg: #f2f4f7; --card: #ffffff; --line: #e1e5eb;
+  --text: #1b1f24; --muted: #6b7684; --green: #2e7d32; --red: #c62828; --amber: #b36b00;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Segoe UI", Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.4; }
+
+/* header and tabs */
+header { position: sticky; top: 0; z-index: 5; background: linear-gradient(90deg, var(--blue-dark), var(--blue)); color: #fff;
+  padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+header h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
+nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 20px; background: var(--card); border-bottom: 1px solid var(--line); }
+nav button { border: 1px solid var(--line); background: #f5f7fa; color: var(--text); padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 14px; }
+nav button:hover { background: #e8edf3; }
+nav button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+h2 { margin: 0 0 14px; font-size: 22px; }
+h3 { margin: 22px 0 10px; font-size: 16px; color: var(--blue-dark); }
+h4 { margin: 0 0 8px; font-size: 14px; }
+
+/* layout */
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.grid2 { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; box-shadow: 0 1px 2px rgba(16,24,40,.06); overflow-x: auto; }
+
+/* value tiles */
+.tile .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.tile .value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+.tile .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.good { color: var(--green); } .warn { color: var(--amber); } .badc { color: var(--red); }
+.muted { color: var(--muted); font-size: 12px; }
+
+/* status pills */
+.pill { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; }
+.pill.on { background: var(--green); } .pill.off { background: var(--red); } .pill.none { background: #8a94a1; }
+
+/* tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-size: 12px; color: var(--muted); border-bottom: 2px solid var(--line); padding: 6px 10px 6px 0; white-space: nowrap; }
+td { border-bottom: 1px solid #eef0f3; padding: 7px 10px 7px 0; }
+tbody tr:hover { background: #fafbfc; }
+
+/* parking slot map */
+.slots { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin-bottom: 12px; }
+.slot { text-align: center; padding: 22px 8px; border-radius: 10px; color: #fff; font-size: 14px; transition: background .3s; }
+.slot b { display: block; font-size: 17px; margin-bottom: 4px; }
+.slot span { font-size: 12px; opacity: .9; }
+.slot.free { background: var(--green); } .slot.occ { background: var(--red); } .slot.fault { background: #6d7681; }
+
+/* charts, buttons, form controls */
+.chart { width: 100%; height: auto; }
+button.act { padding: 4px 12px; cursor: pointer; border: 1px solid var(--blue); background: #fff; color: var(--blue); border-radius: 6px; }
+button.act:hover { background: var(--blue); color: #fff; }
+.tests { display: flex; flex-wrap: wrap; gap: 8px; }
+.tests button { padding: 8px 12px; cursor: pointer; border: 1px solid var(--line); background: #f5f7fa; border-radius: 6px; }
+.tests button:hover:not(:disabled) { background: #e8edf3; }
+.tests button:disabled { opacity: .5; cursor: not-allowed; }
+select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); }
+a { color: var(--blue); }
+
+/* phones */
+@media (max-width: 600px) {
+  main { padding: 12px; }
+  header, nav { padding-left: 12px; padding-right: 12px; }
+  .tile .value { font-size: 22px; }
+}
