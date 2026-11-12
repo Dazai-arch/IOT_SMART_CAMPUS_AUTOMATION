@@ -4,6 +4,7 @@ const CLASS = 'CLASS-A-ESP32-01';
 const PARK = 'PARK-A-ESP32-01';
 const ENERGY = 'ENERGY-A-ESP32-01';
 const WATER = 'WATER-A-ESP32-01';
+const WASTE = 'WASTE-A-ESP32-01';
 const LABELS = { classroom: 'Intelligent Classroom', parking: 'Smart Parking', energy: 'Smart Energy', water: 'Smart Water', waste: 'Smart Waste', safety: 'Campus Safety' };
 
 const val = (s, dev, zone, metric) => s.latest?.[dev]?.[zone]?.[metric];
@@ -265,6 +266,58 @@ function Water({ s, role, onAck }) {
   );
 }
 
+function Waste({ s, role, onAck }) {
+  const zones = s.latest[WASTE] || {};
+  const priority = (p) => (p >= 80 ? ['HIGH', 'badc'] : p >= 50 ? ['MEDIUM', 'warn'] : ['LOW', 'good']);
+  const bins = Object.keys(zones).filter((z) => zones[z].bin_fill_pct).map((z) => ({
+    zone: z, pct: zones[z].bin_fill_pct.value, ts: zones[z].bin_fill_pct.ts, building: zones[z].bin_fill_pct.building
+  })).sort((a, b) => b.pct - a.pct);
+  const main = zones['BIN-1']?.bin_fill_pct;
+  const open = (t) => s.alerts.some((a) => a.device_id === WASTE && a.type === `${t} [BIN-1]` && a.status !== 'resolved');
+  const status = open('sensor_fault') ? ['SENSOR FAULT', 'badc'] : open('obstruction') ? ['OBSTRUCTED', 'warn'] :
+    open('collection_required') ? ['COLLECTION REQUIRED', 'badc'] : main ? ['NORMAL', 'good'] : ['-', ''];
+  const pr = main ? priority(main.value) : ['-', ''];
+  const pct = main ? Math.max(0, Math.min(100, main.value)) : 0;
+  return (
+    <>
+      <h2>Smart Waste - BIN-1</h2>
+      <DeviceHealth id={WASTE} dev={s.devices[WASTE]} />
+      <div className="grid">
+        <div className="card tile">
+          <div className="label">Bin fill level</div>
+          <div className={'value ' + pr[1]}>{main ? main.value.toFixed(1) + ' %' : '-'}</div>
+          <div className="tank"><div className="tankfill" style={{ height: pct + '%', background: '#8d6e63' }} /></div>
+        </div>
+        <Tile label="Priority" value={pr[0]} cls={pr[1]} sub="high above 80 %, medium 50-80 %" />
+        <Tile label="Status" value={<span style={{ fontSize: 17 }}>{status[0]}</span>} cls={status[1]} sub="collection required above 80 %" />
+        <Tile label="Location" value={<span style={{ fontSize: 17 }}>{main?.building || '-'} / BIN-1</span>} />
+        <Tile label="Last update (UTC)" value={<span style={{ fontSize: 15 }}>{time(main?.ts)}</span>} />
+      </div>
+      <h3>Collection ranking (fullest first)</h3>
+      <div className="card">
+        <table>
+          <thead><tr><th>Rank</th><th>Bin</th><th>Location</th><th>Fill</th><th>Priority</th><th>Last update (UTC)</th></tr></thead>
+          <tbody>
+            {bins.map((x, i) => (
+              <tr key={x.zone}><td>{i + 1}</td><td>{x.zone}</td><td>{x.building}</td><td>{x.pct.toFixed(1)} %</td>
+                <td className={priority(x.pct)[1]}><b>{priority(x.pct)[0]}</b></td><td>{time(x.ts)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+        {!bins.length && <div className="muted">Waiting for data...</div>}
+      </div>
+      <h3>Trends</h3>
+      <div className="grid2">
+        <Chart title="Bin fill level" unit="%" points={s.series[`${WASTE}/BIN-1/bin_fill_pct`]} />
+      </div>
+      <h3>Alerts</h3>
+      <AlertsTable alerts={s.alerts.filter((a) => a.module === 'waste')} role={role} onAck={onAck} />
+      <h3>Recent readings</h3>
+      <Recent rows={s.recent.filter((r) => r.module === 'waste')} />
+    </>
+  );
+}
+
 const TESTS = [
   ['Classroom', [['valid_sim', 'Valid reading (31 C)'], ['missing', 'T2: missing field'], ['unknown_module', 'T3: unknown module'], ['unknown_device', 'T3: unknown device'],
     ['out_of_range', 'Out-of-range temperature'], ['malformed', 'Malformed JSON'], ['sensor_fault', 'T6: sensor fault alert'], ['sensor_ok', 'Fault recovery']]],
@@ -273,7 +326,9 @@ const TESTS = [
   ['Energy', [['e_valid', 'Valid reading (30 W)'], ['e_missing', 'T2: missing field'], ['e_unknown_device', 'T3: unknown device'], ['e_range', 'Out-of-range power'],
     ['e_overload', 'T6: overload alert'], ['e_overload_ok', 'Overload cleared'], ['e_fault', 'Sensor fault alert'], ['e_fault_ok', 'Sensor fault recovery']]],
   ['Water', [['w_valid', 'Valid reading (55 %)'], ['w_missing', 'T2: missing field'], ['w_unknown_device', 'T3: unknown device'], ['w_range', 'Out-of-range level'],
-    ['w_low', 'Low-level alert'], ['w_low_ok', 'Low-level cleared'], ['w_leak', 'T6: leak alert'], ['w_leak_ok', 'Leak cleared']]]
+    ['w_low', 'Low-level alert'], ['w_low_ok', 'Low-level cleared'], ['w_leak', 'T6: leak alert'], ['w_leak_ok', 'Leak cleared']]],
+  ['Waste', [['b_valid', 'Valid reading (60 %)'], ['b_missing', 'T2: missing field'], ['b_unknown_device', 'T3: unknown device'], ['b_range', 'Out-of-range fill'],
+    ['b_collect', 'T6: collection alert'], ['b_collect_ok', 'Collection cleared'], ['b_bin2', 'Simulated bin 2 (85 %)'], ['b_bin3', 'Simulated bin 3 (30 %)']]]
 ];
 
 function System({ s, role, onTest, sent }) {
@@ -301,7 +356,7 @@ function System({ s, role, onTest, sent }) {
 
 // ---------- app ----------
 export function Dashboard({ s, err, role, setRole, tab, setTab, onAck, onTest, sent }) {
-  const tabs = [['overview', 'Campus overview'], ['classroom', 'Classroom (Module 1)'], ['parking', 'Parking (Module 2)'], ['energy', 'Energy (Module 3)'], ['water', 'Water (Module 4)'], ['system', 'Flagged / Tests']];
+  const tabs = [['overview', 'Campus overview'], ['classroom', 'Classroom (Module 1)'], ['parking', 'Parking (Module 2)'], ['energy', 'Energy (Module 3)'], ['water', 'Water (Module 4)'], ['waste', 'Waste (Module 5)'], ['system', 'Flagged / Tests']];
   return (
     <>
       <header>
@@ -322,6 +377,7 @@ export function Dashboard({ s, err, role, setRole, tab, setTab, onAck, onTest, s
             {tab === 'parking' && <Parking s={s} role={role} onAck={onAck} />}
             {tab === 'energy' && <Energy s={s} role={role} onAck={onAck} />}
             {tab === 'water' && <Water s={s} role={role} onAck={onAck} />}
+            {tab === 'waste' && <Waste s={s} role={role} onAck={onAck} />}
             {tab === 'system' && <System s={s} role={role} onTest={onTest} sent={sent} />}
           </>
         )}

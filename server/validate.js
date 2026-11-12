@@ -9,7 +9,7 @@ export const REGISTRY = {
 };
 const MODULES = ['classroom', 'parking', 'energy', 'water', 'waste', 'safety'];
 const REQUIRED = ['schema_version', 'campus_id', 'module', 'building_id', 'zone_id', 'device_id', 'timestamp', 'metric', 'value', 'unit', 'status'];
-const BOOL_METRICS = ['occupancy_detected', 'slot_occupied', 'smoke_detected', 'device_online', 'light_state', 'fan_state', 'sensor_fault', 'overload', 'pump_state', 'leak', 'low_level'];
+const BOOL_METRICS = ['occupancy_detected', 'slot_occupied', 'smoke_detected', 'device_online', 'light_state', 'fan_state', 'sensor_fault', 'overload', 'pump_state', 'leak', 'low_level', 'collection_required', 'obstruction'];
 const RANGES = {
   occupancy_count: [0, 1000], temperature: [-40, 80], light_level: [0, 100000], co2_ppm: [0, 10000],
   power_w: [0, 100000], energy_kwh: [0, 1e9], tank_level_pct: [0, 100], water_flow_lpm: [0, 1000],

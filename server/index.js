@@ -46,7 +46,7 @@ function ingest(topic, text) {
   if (kind === 'telemetry') {
     insReading.run(d.timestamp, new Date().toISOString(), d.module, d.building_id, d.zone_id, d.device_id, d.metric,
       typeof d.value === 'boolean' ? (d.value ? 1 : 0) : d.value, d.unit, d.status);
-    ((state.latest[d.device_id] ||= {})[d.zone_id] ||= {})[d.metric] = { value: d.value, unit: d.unit, ts: d.timestamp, status: d.status };
+    ((state.latest[d.device_id] ||= {})[d.zone_id] ||= {})[d.metric] = { value: d.value, unit: d.unit, ts: d.timestamp, status: d.status, building: d.building_id };
     if (typeof d.value === 'number') {
       const arr = (state.series[`${d.device_id}/${d.zone_id}/${d.metric}`] ||= []);
       arr.push({ t: Date.parse(d.timestamp), v: d.value });
@@ -55,11 +55,13 @@ function ingest(topic, text) {
     state.recent.unshift({ ts: d.timestamp, module: d.module, zone: d.zone_id, metric: d.metric, value: d.value, unit: d.unit });
     state.recent.length = Math.min(state.recent.length, 60);
     if ((d.module === 'parking' && (d.metric === 'slot_occupied' || d.metric === 'distance_cm')) ||
-        (d.module === 'energy' && d.metric === 'power_w') || (d.module === 'water' && d.metric === 'tank_level_pct')) {
+        (d.module === 'energy' && d.metric === 'power_w') || (d.module === 'water' && d.metric === 'tank_level_pct') ||
+        (d.module === 'waste' && d.metric === 'bin_fill_pct')) {
       // A sensor that keeps reporting readings is healthy: resolve a fault alert whose recovery message was lost.
-      const stuck = state.alerts.find((a) => a.device_id === d.device_id && a.type === `sensor_fault [${d.zone_id}]` &&
-        a.status !== 'resolved' && Date.parse(d.timestamp) - Date.parse(a.ts) >= 30000);
-      if (stuck) { stuck.status = 'resolved'; stuck.acked_at ||= new Date().toISOString(); saveAlert(stuck); }
+      state.alerts.filter((a) => a.device_id === d.device_id &&
+        (a.type === `sensor_fault [${d.zone_id}]` || a.type === `obstruction [${d.zone_id}]`) &&
+        a.status !== 'resolved' && Date.parse(d.timestamp) - Date.parse(a.ts) >= 30000)
+        .forEach((a) => { a.status = 'resolved'; a.acked_at ||= new Date().toISOString(); saveAlert(a); });
     }
   }
   emit();
@@ -133,6 +135,7 @@ function testMessage(name) {
   const pb = 'christ-smart-campus/v1/parking/block-a/PARK-A-ESP32-01';
   const eb = 'christ-smart-campus/v1/energy/block-a/ENERGY-A-ESP32-01';
   const wb = 'christ-smart-campus/v1/water/block-a/WATER-A-ESP32-01';
+  const sb = 'christ-smart-campus/v1/waste/block-a/WASTE-A-ESP32-01';
   const c = (o) => ({ schema_version: '1.0', campus_id: 'CHRIST-DEMO', module: 'classroom', building_id: 'BLOCKA', zone_id: 'ROOM-204',
     device_id: 'CLASS-A-ESP32-01', timestamp: ts(), metric: 'temperature', value: 31.0, unit: 'C', status: 'normal', ...o });
   const p = (o) => ({ schema_version: '1.0', campus_id: 'CHRIST-DEMO', module: 'parking', building_id: 'BLOCKA', zone_id: 'SLOT-1',
@@ -141,6 +144,8 @@ function testMessage(name) {
     device_id: 'ENERGY-A-ESP32-01', timestamp: ts(), metric: 'power_w', value: 30.0, unit: 'W', status: 'normal', ...o });
   const w = (o) => ({ schema_version: '1.0', campus_id: 'CHRIST-DEMO', module: 'water', building_id: 'BLOCKA', zone_id: 'TANK-1',
     device_id: 'WATER-A-ESP32-01', timestamp: ts(), metric: 'tank_level_pct', value: 55.0, unit: '%', status: 'normal', ...o });
+  const b = (o) => ({ schema_version: '1.0', campus_id: 'CHRIST-DEMO', module: 'waste', building_id: 'BLOCKA', zone_id: 'BIN-1',
+    device_id: 'WASTE-A-ESP32-01', timestamp: ts(), metric: 'bin_fill_pct', value: 60.0, unit: '%', status: 'normal', ...o });
   const del = (o, k) => { const x = { ...o }; delete x[k]; return x; };
   const T = {
     valid_sim: [cb + '/telemetry', c()],
@@ -174,7 +179,15 @@ function testMessage(name) {
     w_low: [wb + '/alerts', w({ metric: 'low_level', value: true, unit: 'bool', status: 'warning' })],
     w_low_ok: [wb + '/alerts', w({ metric: 'low_level', value: false, unit: 'bool', status: 'normal' })],
     w_leak: [wb + '/alerts', w({ metric: 'leak', value: true, unit: 'bool', status: 'critical' })],
-    w_leak_ok: [wb + '/alerts', w({ metric: 'leak', value: false, unit: 'bool', status: 'normal' })]
+    w_leak_ok: [wb + '/alerts', w({ metric: 'leak', value: false, unit: 'bool', status: 'normal' })],
+    b_valid: [sb + '/telemetry', b()],
+    b_missing: [sb + '/telemetry', del(b(), 'unit')],
+    b_unknown_device: ['christ-smart-campus/v1/waste/block-a/WASTE-Z-ESP32-99/telemetry', b({ device_id: 'WASTE-Z-ESP32-99' })],
+    b_range: [sb + '/telemetry', b({ value: 150 })],
+    b_collect: [sb + '/alerts', b({ metric: 'collection_required', value: true, unit: 'bool', status: 'warning' })],
+    b_collect_ok: [sb + '/alerts', b({ metric: 'collection_required', value: false, unit: 'bool', status: 'normal' })],
+    b_bin2: [sb + '/telemetry', b({ zone_id: 'BIN-2', value: 85.0, status: 'warning' })],
+    b_bin3: [sb + '/telemetry', b({ zone_id: 'BIN-3', value: 30.0 })]
   };
   return T[name];
 }
