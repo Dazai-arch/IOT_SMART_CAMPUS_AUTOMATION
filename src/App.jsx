@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 const CLASS = 'CLASS-A-ESP32-01';
 const PARK = 'PARK-A-ESP32-01';
 const ENERGY = 'ENERGY-A-ESP32-01';
+const WATER = 'WATER-A-ESP32-01';
 const LABELS = { classroom: 'Intelligent Classroom', parking: 'Smart Parking', energy: 'Smart Energy', water: 'Smart Water', waste: 'Smart Waste', safety: 'Campus Safety' };
 
 const val = (s, dev, zone, metric) => s.latest?.[dev]?.[zone]?.[metric];
@@ -226,13 +227,53 @@ function Energy({ s, role, onAck }) {
   );
 }
 
+function Water({ s, role, onAck }) {
+  const g = (m) => val(s, WATER, 'TANK-1', m);
+  const lvl = g('tank_level_pct'), flow = g('water_flow_lpm'), pump = g('pump_state');
+  const open = (t) => s.alerts.some((a) => a.device_id === WATER && a.type === `${t} [TANK-1]` && a.status !== 'resolved');
+  const status = open('sensor_fault') ? ['SENSOR FAULT', 'badc'] : open('leak') ? ['LEAK', 'badc'] : open('low_level') ? ['LOW LEVEL', 'warn'] : lvl ? ['NORMAL', 'good'] : ['-', ''];
+  const pct = lvl ? Math.max(0, Math.min(100, lvl.value)) : 0;
+  const last = lvl?.ts || flow?.ts || pump?.ts;
+  return (
+    <>
+      <h2>Smart Water - TANK-1</h2>
+      <DeviceHealth id={WATER} dev={s.devices[WATER]} />
+      <div className="card muted" style={{ marginBottom: 12 }}>
+        Tank level comes from an ultrasonic sensor. SIMULATED: the flow sensor (button pulses) and the leak sensor (switch). The pump is an LED.
+      </div>
+      <div className="grid">
+        <div className="card tile">
+          <div className="label">Tank level</div>
+          <div className={'value ' + (status[1] === 'warn' || status[1] === 'badc' ? status[1] : 'good')}>{lvl ? lvl.value.toFixed(1) + ' %' : '-'}</div>
+          <div className="tank"><div className="tankfill" style={{ height: pct + '%' }} /></div>
+        </div>
+        <Tile label="Flow" value={flow ? flow.value.toFixed(1) + ' L/min' : '-'} sub="each button press = one pulse" />
+        <Tile label="Pump (demo LED)" value={pump ? (pump.value ? 'ON' : 'OFF') : '-'} sub="on below 30 %, off above 90 %" />
+        <Tile label="Status" value={status[0]} cls={status[1]} sub="low-level alert below 20 %" />
+        <Tile label="Last update (UTC)" value={<span style={{ fontSize: 15 }}>{time(last)}</span>} />
+      </div>
+      <h3>Trends</h3>
+      <div className="grid2">
+        <Chart title="Tank level" unit="%" points={s.series[`${WATER}/TANK-1/tank_level_pct`]} />
+        <Chart title="Flow" unit="L/min" step points={s.series[`${WATER}/TANK-1/water_flow_lpm`]} />
+      </div>
+      <h3>Alerts</h3>
+      <AlertsTable alerts={s.alerts.filter((a) => a.module === 'water')} role={role} onAck={onAck} />
+      <h3>Recent readings</h3>
+      <Recent rows={s.recent.filter((r) => r.module === 'water')} />
+    </>
+  );
+}
+
 const TESTS = [
   ['Classroom', [['valid_sim', 'Valid reading (31 C)'], ['missing', 'T2: missing field'], ['unknown_module', 'T3: unknown module'], ['unknown_device', 'T3: unknown device'],
     ['out_of_range', 'Out-of-range temperature'], ['malformed', 'Malformed JSON'], ['sensor_fault', 'T6: sensor fault alert'], ['sensor_ok', 'Fault recovery']]],
   ['Parking', [['p_valid', 'Slot 1 occupied'], ['p_free', 'Slot 1 free'], ['p_missing', 'T2: missing field'], ['p_unknown_device', 'T3: unknown device'],
     ['p_unknown_module', 'T3: unknown module'], ['p_range', 'Out-of-range distance'], ['p_fault', 'T6: slot 2 fault alert'], ['p_ok', 'Slot 2 recovery']]],
   ['Energy', [['e_valid', 'Valid reading (30 W)'], ['e_missing', 'T2: missing field'], ['e_unknown_device', 'T3: unknown device'], ['e_range', 'Out-of-range power'],
-    ['e_overload', 'T6: overload alert'], ['e_overload_ok', 'Overload cleared'], ['e_fault', 'Sensor fault alert'], ['e_fault_ok', 'Sensor fault recovery']]]
+    ['e_overload', 'T6: overload alert'], ['e_overload_ok', 'Overload cleared'], ['e_fault', 'Sensor fault alert'], ['e_fault_ok', 'Sensor fault recovery']]],
+  ['Water', [['w_valid', 'Valid reading (55 %)'], ['w_missing', 'T2: missing field'], ['w_unknown_device', 'T3: unknown device'], ['w_range', 'Out-of-range level'],
+    ['w_low', 'Low-level alert'], ['w_low_ok', 'Low-level cleared'], ['w_leak', 'T6: leak alert'], ['w_leak_ok', 'Leak cleared']]]
 ];
 
 function System({ s, role, onTest, sent }) {
@@ -260,7 +301,7 @@ function System({ s, role, onTest, sent }) {
 
 // ---------- app ----------
 export function Dashboard({ s, err, role, setRole, tab, setTab, onAck, onTest, sent }) {
-  const tabs = [['overview', 'Campus overview'], ['classroom', 'Classroom (Module 1)'], ['parking', 'Parking (Module 2)'], ['energy', 'Energy (Module 3)'], ['system', 'Flagged / Tests']];
+  const tabs = [['overview', 'Campus overview'], ['classroom', 'Classroom (Module 1)'], ['parking', 'Parking (Module 2)'], ['energy', 'Energy (Module 3)'], ['water', 'Water (Module 4)'], ['system', 'Flagged / Tests']];
   return (
     <>
       <header>
@@ -280,6 +321,7 @@ export function Dashboard({ s, err, role, setRole, tab, setTab, onAck, onTest, s
             {tab === 'classroom' && <Classroom s={s} role={role} onAck={onAck} />}
             {tab === 'parking' && <Parking s={s} role={role} onAck={onAck} />}
             {tab === 'energy' && <Energy s={s} role={role} onAck={onAck} />}
+            {tab === 'water' && <Water s={s} role={role} onAck={onAck} />}
             {tab === 'system' && <System s={s} role={role} onTest={onTest} sent={sent} />}
           </>
         )}
