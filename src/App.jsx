@@ -5,6 +5,7 @@ const PARK = 'PARK-A-ESP32-01';
 const ENERGY = 'ENERGY-A-ESP32-01';
 const WATER = 'WATER-A-ESP32-01';
 const WASTE = 'WASTE-A-ESP32-01';
+const SAFE = 'SAFE-A-ESP32-01';
 const LABELS = { classroom: 'Intelligent Classroom', parking: 'Smart Parking', energy: 'Smart Energy', water: 'Smart Water', waste: 'Smart Waste', safety: 'Campus Safety' };
 
 const val = (s, dev, zone, metric) => s.latest?.[dev]?.[zone]?.[metric];
@@ -318,6 +319,47 @@ function Waste({ s, role, onAck }) {
   );
 }
 
+function Safety({ s, role, onAck }) {
+  const g = (m) => val(s, SAFE, 'LAB-101', m);
+  const temp = g('temperature'), gas = g('gas_level_pct'), smoke = g('smoke_detected');
+  const mine = s.alerts.filter((a) => a.module === 'safety');
+  const open = (t) => mine.filter((a) => a.type === `${t} [LAB-101]` && a.status !== 'resolved');
+  const alarms = open('smoke_detected').concat(open('high_temperature'));
+  const fault = open('sensor_fault').length > 0;
+  const status = alarms.some((a) => a.status === 'active') ? ['ALARM ACTIVE', 'badc'] :
+    alarms.length ? ['ALARM ACKNOWLEDGED', 'warn'] : fault ? ['SENSOR FAULT', 'warn'] : (temp || gas) ? ['NORMAL', 'good'] : ['-', ''];
+  const nActive = mine.filter((a) => a.status === 'active').length;
+  const nAck = mine.filter((a) => a.status === 'acknowledged').length;
+  const last = temp?.ts || gas?.ts || smoke?.ts;
+  return (
+    <>
+      <h2>Campus Safety - LAB-101</h2>
+      <DeviceHealth id={SAFE} dev={s.devices[SAFE]} />
+      <div className="card muted" style={{ marginBottom: 12 }}>
+        DEMONSTRATION ONLY - not a certified life-safety system. Smoke events are simulated with a push button; the gas sensor is a simulated demo part.
+      </div>
+      <div className="grid">
+        <Tile label="Status" value={<span style={{ fontSize: 18 }}>{status[0]}</span>} cls={status[1]} />
+        <Tile label="Temperature" value={temp ? temp.value.toFixed(1) + ' °C' : '-'} cls={temp && temp.value > 50 ? 'badc' : ''} sub="alarm above 50 °C" />
+        <Tile label="Gas / smoke level" value={gas ? gas.value.toFixed(1) + ' %' : '-'} />
+        <Tile label="Smoke detected" value={smoke ? (smoke.value ? 'YES' : 'No') : '-'} cls={smoke && smoke.value ? 'badc' : ''} />
+        <Tile label="Active alerts" value={nActive} cls={nActive ? 'badc' : ''} />
+        <Tile label="Acknowledged alerts" value={nAck} cls={nAck ? 'warn' : ''} />
+        <Tile label="Last update (UTC)" value={<span style={{ fontSize: 15 }}>{time(last)}</span>} />
+      </div>
+      <h3>Trends</h3>
+      <div className="grid2">
+        <Chart title="Temperature" unit="°C" points={s.series[`${SAFE}/LAB-101/temperature`]} />
+        <Chart title="Gas / smoke level" unit="%" points={s.series[`${SAFE}/LAB-101/gas_level_pct`]} />
+      </div>
+      <h3>Alerts (active and acknowledged)</h3>
+      <AlertsTable alerts={mine} role={role} onAck={onAck} />
+      <h3>Recent readings</h3>
+      <Recent rows={s.recent.filter((r) => r.module === 'safety')} />
+    </>
+  );
+}
+
 const TESTS = [
   ['Classroom', [['valid_sim', 'Valid reading (31 C)'], ['missing', 'T2: missing field'], ['unknown_module', 'T3: unknown module'], ['unknown_device', 'T3: unknown device'],
     ['out_of_range', 'Out-of-range temperature'], ['malformed', 'Malformed JSON'], ['sensor_fault', 'T6: sensor fault alert'], ['sensor_ok', 'Fault recovery']]],
@@ -328,7 +370,9 @@ const TESTS = [
   ['Water', [['w_valid', 'Valid reading (55 %)'], ['w_missing', 'T2: missing field'], ['w_unknown_device', 'T3: unknown device'], ['w_range', 'Out-of-range level'],
     ['w_low', 'Low-level alert'], ['w_low_ok', 'Low-level cleared'], ['w_leak', 'T6: leak alert'], ['w_leak_ok', 'Leak cleared']]],
   ['Waste', [['b_valid', 'Valid reading (60 %)'], ['b_missing', 'T2: missing field'], ['b_unknown_device', 'T3: unknown device'], ['b_range', 'Out-of-range fill'],
-    ['b_collect', 'T6: collection alert'], ['b_collect_ok', 'Collection cleared'], ['b_bin2', 'Simulated bin 2 (85 %)'], ['b_bin3', 'Simulated bin 3 (30 %)']]]
+    ['b_collect', 'T6: collection alert'], ['b_collect_ok', 'Collection cleared'], ['b_bin2', 'Simulated bin 2 (85 %)'], ['b_bin3', 'Simulated bin 3 (30 %)']]],
+  ['Safety', [['f_valid', 'Valid reading (24 C)'], ['f_missing', 'T2: missing field'], ['f_unknown_device', 'T3: unknown device'], ['f_range', 'Out-of-range temperature'],
+    ['f_smoke', 'T6: smoke alert'], ['f_smoke_ok', 'Smoke cleared'], ['f_temp', 'High-temperature alert'], ['f_temp_ok', 'Temperature cleared']]]
 ];
 
 function System({ s, role, onTest, sent }) {
@@ -356,7 +400,7 @@ function System({ s, role, onTest, sent }) {
 
 // ---------- app ----------
 export function Dashboard({ s, err, role, setRole, tab, setTab, onAck, onTest, sent }) {
-  const tabs = [['overview', 'Campus overview'], ['classroom', 'Classroom (Module 1)'], ['parking', 'Parking (Module 2)'], ['energy', 'Energy (Module 3)'], ['water', 'Water (Module 4)'], ['waste', 'Waste (Module 5)'], ['system', 'Flagged / Tests']];
+  const tabs = [['overview', 'Campus overview'], ['classroom', 'Classroom (Module 1)'], ['parking', 'Parking (Module 2)'], ['energy', 'Energy (Module 3)'], ['water', 'Water (Module 4)'], ['waste', 'Waste (Module 5)'], ['safety', 'Safety (Module 6)'], ['system', 'Flagged / Tests']];
   return (
     <>
       <header>
@@ -378,6 +422,7 @@ export function Dashboard({ s, err, role, setRole, tab, setTab, onAck, onTest, s
             {tab === 'energy' && <Energy s={s} role={role} onAck={onAck} />}
             {tab === 'water' && <Water s={s} role={role} onAck={onAck} />}
             {tab === 'waste' && <Waste s={s} role={role} onAck={onAck} />}
+            {tab === 'safety' && <Safety s={s} role={role} onAck={onAck} />}
             {tab === 'system' && <System s={s} role={role} onTest={onTest} sent={sent} />}
           </>
         )}

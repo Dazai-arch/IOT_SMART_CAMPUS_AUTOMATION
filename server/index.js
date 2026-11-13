@@ -56,7 +56,7 @@ function ingest(topic, text) {
     state.recent.length = Math.min(state.recent.length, 60);
     if ((d.module === 'parking' && (d.metric === 'slot_occupied' || d.metric === 'distance_cm')) ||
         (d.module === 'energy' && d.metric === 'power_w') || (d.module === 'water' && d.metric === 'tank_level_pct') ||
-        (d.module === 'waste' && d.metric === 'bin_fill_pct')) {
+        (d.module === 'waste' && d.metric === 'bin_fill_pct') || (d.module === 'safety' && d.metric === 'temperature')) {
       // A sensor that keeps reporting readings is healthy: resolve a fault alert whose recovery message was lost.
       state.alerts.filter((a) => a.device_id === d.device_id &&
         (a.type === `sensor_fault [${d.zone_id}]` || a.type === `obstruction [${d.zone_id}]`) &&
@@ -70,9 +70,9 @@ function ingest(topic, text) {
 // ---------- Alerts (FR-06, FR-07) ----------
 function handleAlert(d) {
   const type = `${d.metric} [${d.zone_id}]`;
-  const open = state.alerts.find((a) => a.device_id === d.device_id && a.type === type && a.status !== 'resolved');
-  if (d.value === false || d.status === 'normal') {                          // recovery message
-    if (open) { open.status = 'resolved'; open.acked_at ||= new Date().toISOString(); saveAlert(open); }
+  if (d.value === false || d.status === 'normal') {                          // recovery message: resolves ALL open alerts of this type
+    state.alerts.filter((a) => a.device_id === d.device_id && a.type === type && a.status !== 'resolved')
+      .forEach((a) => { a.status = 'resolved'; a.acked_at ||= new Date().toISOString(); saveAlert(a); });
     return;
   }
   if (state.alerts.find((a) => a.device_id === d.device_id && a.type === type && a.status === 'active')) return;
@@ -136,6 +136,7 @@ function testMessage(name) {
   const eb = 'christ-smart-campus/v1/energy/block-a/ENERGY-A-ESP32-01';
   const wb = 'christ-smart-campus/v1/water/block-a/WATER-A-ESP32-01';
   const sb = 'christ-smart-campus/v1/waste/block-a/WASTE-A-ESP32-01';
+  const fb = 'christ-smart-campus/v1/safety/block-a/SAFE-A-ESP32-01';
   const c = (o) => ({ schema_version: '1.0', campus_id: 'CHRIST-DEMO', module: 'classroom', building_id: 'BLOCKA', zone_id: 'ROOM-204',
     device_id: 'CLASS-A-ESP32-01', timestamp: ts(), metric: 'temperature', value: 31.0, unit: 'C', status: 'normal', ...o });
   const p = (o) => ({ schema_version: '1.0', campus_id: 'CHRIST-DEMO', module: 'parking', building_id: 'BLOCKA', zone_id: 'SLOT-1',
@@ -146,6 +147,8 @@ function testMessage(name) {
     device_id: 'WATER-A-ESP32-01', timestamp: ts(), metric: 'tank_level_pct', value: 55.0, unit: '%', status: 'normal', ...o });
   const b = (o) => ({ schema_version: '1.0', campus_id: 'CHRIST-DEMO', module: 'waste', building_id: 'BLOCKA', zone_id: 'BIN-1',
     device_id: 'WASTE-A-ESP32-01', timestamp: ts(), metric: 'bin_fill_pct', value: 60.0, unit: '%', status: 'normal', ...o });
+  const f = (o) => ({ schema_version: '1.0', campus_id: 'CHRIST-DEMO', module: 'safety', building_id: 'BLOCKA', zone_id: 'LAB-101',
+    device_id: 'SAFE-A-ESP32-01', timestamp: ts(), metric: 'temperature', value: 24.0, unit: 'C', status: 'normal', ...o });
   const del = (o, k) => { const x = { ...o }; delete x[k]; return x; };
   const T = {
     valid_sim: [cb + '/telemetry', c()],
@@ -187,7 +190,15 @@ function testMessage(name) {
     b_collect: [sb + '/alerts', b({ metric: 'collection_required', value: true, unit: 'bool', status: 'warning' })],
     b_collect_ok: [sb + '/alerts', b({ metric: 'collection_required', value: false, unit: 'bool', status: 'normal' })],
     b_bin2: [sb + '/telemetry', b({ zone_id: 'BIN-2', value: 85.0, status: 'warning' })],
-    b_bin3: [sb + '/telemetry', b({ zone_id: 'BIN-3', value: 30.0 })]
+    b_bin3: [sb + '/telemetry', b({ zone_id: 'BIN-3', value: 30.0 })],
+    f_valid: [fb + '/telemetry', f()],
+    f_missing: [fb + '/telemetry', del(f(), 'unit')],
+    f_unknown_device: ['christ-smart-campus/v1/safety/block-a/SAFE-Z-ESP32-99/telemetry', f({ device_id: 'SAFE-Z-ESP32-99' })],
+    f_range: [fb + '/telemetry', f({ value: 500 })],
+    f_smoke: [fb + '/alerts', f({ metric: 'smoke_detected', value: true, unit: 'bool', status: 'critical' })],
+    f_smoke_ok: [fb + '/alerts', f({ metric: 'smoke_detected', value: false, unit: 'bool', status: 'normal' })],
+    f_temp: [fb + '/alerts', f({ metric: 'high_temperature', value: true, unit: 'bool', status: 'critical' })],
+    f_temp_ok: [fb + '/alerts', f({ metric: 'high_temperature', value: false, unit: 'bool', status: 'normal' })]
   };
   return T[name];
 }
